@@ -5,12 +5,7 @@ function Admin() {
 
   /* ================= STATE ================= */
 
-  const [section,setSection]=useState("dashboard");
-  const [properties,setProperties]=useState([]);
-  const [editing,setEditing]=useState(null);
-  const [image,setImage]=useState(null);
-
-  const [form,setForm]=useState({
+  const emptyForm = {
     title:"",
     price:"",
     city:"",
@@ -18,66 +13,86 @@ function Admin() {
     propertyType:"",
     bhk:"",
     area:"",
-    whatsapp:"",
+    ownerPhone:"",
+    status:"available",
     description:""
-  });
+  };
+
+  const [form,setForm]=useState(emptyForm);
+  const [properties,setProperties]=useState([]);
+  const [editing,setEditing]=useState(null);
+  const [image,setImage]=useState(null);
+  const [loading,setLoading]=useState(false);
 
   /* ================= FETCH ================= */
 
-  const fetchProperties = async ()=>{
+  const fetchProperties = async () => {
     const res = await API.get("/properties");
     setProperties(res.data);
   };
 
   useEffect(()=>{ fetchProperties(); },[]);
 
-  /* ================= STATS ================= */
+  /* ================= SUBMIT ================= */
 
-  const totalProperties = properties.length;
-  const soldProperties = properties.filter(p=>p.status==="sold").length;
-  const availableProperties = properties.filter(p=>p.status==="available").length;
-
-  const totalValue =
-    properties.reduce((sum,p)=>sum+Number(p.price||0),0);
-
-  /* ================= ADD ================= */
-
-  const handleAdd = async(e)=>{
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const formData=new FormData();
-    Object.keys(form).forEach(k=>formData.append(k,form[k]));
-    if(image) formData.append("image",image);
+    const formData = new FormData();
 
-    await API.post("/properties/add",formData);
+    Object.keys(form).forEach(key=>{
+      formData.append(key,form[key]);
+    });
 
-    fetchProperties();
-    setSection("properties");
+    // ⭐ MUST MATCH backend upload.single("image")
+    if(image){
+      formData.append("image",image);
+    }
+
+    try{
+      setLoading(true);
+
+      if(editing){
+        await API.put(`/properties/${editing._id}`,formData,{
+          headers:{ "Content-Type":"multipart/form-data" }
+        });
+        alert("Property Updated ✅");
+      }else{
+        await API.post("/properties/add",formData,{
+          headers:{ "Content-Type":"multipart/form-data" }
+        });
+        alert("Property Added ✅");
+      }
+
+      setForm(emptyForm);
+      setEditing(null);
+      setImage(null);
+      fetchProperties();
+
+    }catch(err){
+      console.error("ADD ERROR:",err.response?.data || err);
+      alert("Failed to add property ❌");
+    }finally{
+      setLoading(false);
+    }
   };
 
   /* ================= ACTIONS ================= */
 
-  const deleteProperty=async(id)=>{
+  const deleteProperty = async(id)=>{
     await API.delete(`/properties/${id}`);
     fetchProperties();
   };
 
-  const toggleStatus=async(id)=>{
+  const toggleStatus = async(id)=>{
     await API.patch(`/properties/${id}/status`);
     fetchProperties();
   };
 
-  const openEdit=(p)=>setEditing({...p});
-
-  const saveEdit=async()=>{
-    const formData=new FormData();
-    Object.keys(editing).forEach(k=>formData.append(k,editing[k]));
-    if(image) formData.append("image",image);
-
-    await API.put(`/properties/${editing._id}`,formData);
-
-    setEditing(null);
-    fetchProperties();
+  const openEdit = (p)=>{
+    setEditing(p);
+    setForm({...emptyForm,...p});
+    window.scrollTo({top:0,behavior:"smooth"});
   };
 
   /* ================= UI ================= */
@@ -85,165 +100,159 @@ function Admin() {
   return (
     <div style={page}>
 
-      {/* ===== SIDEBAR ===== */}
-      <div style={sidebar}>
-        <h2>🏠 Gruhaani</h2>
+      <h1 style={{marginBottom:"20px"}}>🏠 Admin Dashboard</h1>
 
-        <Menu text="Dashboard" icon="📊"
-          active={section==="dashboard"}
-          onClick={()=>setSection("dashboard")}
-        />
+      {/* ===== ADD / EDIT FORM ===== */}
+      <form onSubmit={handleSubmit} style={formCard}>
 
-        <Menu text="Properties" icon="🏡"
-          active={section==="properties"}
-          onClick={()=>setSection("properties")}
-        />
+        <h2>{editing ? "Update Property" : "Add New Property"}</h2>
 
-        <Menu text="Enquiries" icon="📩"
-          active={section==="enquiries"}
-          onClick={()=>setSection("enquiries")}
-        />
-
-        <Menu text="Settings" icon="⚙"
-          active={section==="settings"}
-          onClick={()=>setSection("settings")}
-        />
-      </div>
-
-      {/* ===== MAIN ===== */}
-      <div style={main}>
-
-        {/* DASHBOARD */}
-        {section==="dashboard" && (
-          <>
-            <h1>Admin Dashboard</h1>
-
-            <div style={statsGrid}>
-              <Stat title="Total" value={totalProperties}/>
-              <Stat title="Available" value={availableProperties}/>
-              <Stat title="Sold" value={soldProperties}/>
-              <Stat title="Total Value" value={`₹ ${totalValue.toLocaleString()}`}/>
-            </div>
-          </>
-        )}
-
-        {/* PROPERTIES */}
-        {section==="properties" && (
-          <>
-            <h2>Add Property</h2>
-
-            <form onSubmit={handleAdd} style={addCard}>
-              {Object.keys(form).map(k=>(
-                k!=="description" &&
-                <input key={k}
-                  placeholder={k}
-                  onChange={e=>setForm({...form,[k]:e.target.value})}/>
-              ))}
-
-              <textarea
-                placeholder="description"
-                onChange={e=>setForm({...form,description:e.target.value})}
-              />
-
-              <input type="file"
-                onChange={e=>setImage(e.target.files[0])}
-              />
-
-              <button style={primaryBtn}>Add Property</button>
-            </form>
-
-            <h2>Manage Properties</h2>
-
-            <div style={grid}>
-              {properties.map(p=>(
-                <div key={p._id} style={card}>
-                  <img src={p.images?.[0]} style={img}/>
-                  <h3>{p.title}</h3>
-
-                  <div style={btnRow}>
-                    <button onClick={()=>openEdit(p)} style={primaryBtn}>Edit</button>
-                    <button onClick={()=>deleteProperty(p._id)} style={deleteBtn}>Delete</button>
-                    <button onClick={()=>toggleStatus(p._id)} style={darkBtn}>Toggle</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {section==="enquiries" && <h2>Enquiries Coming Soon 🚀</h2>}
-        {section==="settings" && <h2>Settings Panel Coming Soon ⚙</h2>}
-
-      </div>
-
-      {/* EDIT MODAL */}
-      {editing && (
-        <div style={modalBg}>
-          <div style={modal}>
-            <h3>Edit Property</h3>
-
-            {Object.keys(editing).slice(1,8).map(k=>(
-              <input key={k}
-                value={editing[k]}
-                onChange={e=>setEditing({...editing,[k]:e.target.value})}/>
-            ))}
-
-            <button onClick={saveEdit} style={primaryBtn}>
-              Update
-            </button>
-          </div>
+        <div style={grid}>
+          {Object.keys(form).map(key=>(
+            key!=="description" &&
+            <input
+              key={key}
+              placeholder={key}
+              value={form[key]}
+              onChange={e=>setForm({...form,[key]:e.target.value})}
+              required
+              style={input}
+            />
+          ))}
         </div>
-      )}
+
+        <textarea
+          placeholder="Property Description"
+          value={form.description}
+          onChange={e=>setForm({...form,description:e.target.value})}
+          style={textarea}
+        />
+
+        <input
+          type="file"
+          onChange={e=>setImage(e.target.files[0])}
+        />
+
+        <button
+          type="submit"
+          disabled={loading}
+          style={submitBtn}
+        >
+          {loading
+            ? "Saving..."
+            : editing ? "Update Property" : "Add Property"}
+        </button>
+
+      </form>
+
+      {/* ===== PROPERTY LIST ===== */}
+      <div style={grid}>
+        {properties.map(p=>(
+          <div key={p._id} style={card}>
+
+            <img
+              src={
+                p.images?.[0] ||
+                "https://via.placeholder.com/400x250"
+              }
+              style={img}
+            />
+
+            <h3>{p.title}</h3>
+            <p>{p.city}</p>
+
+            <h3 style={{color:"#2563eb"}}>
+              ₹ {Number(p.price).toLocaleString()}
+            </h3>
+
+            <div style={btnRow}>
+              <button onClick={()=>openEdit(p)} style={editBtn}>
+                Edit
+              </button>
+
+              <button onClick={()=>deleteProperty(p._id)} style={deleteBtn}>
+                Delete
+              </button>
+
+              <button onClick={()=>toggleStatus(p._id)} style={toggleBtn}>
+                Toggle
+              </button>
+            </div>
+
+          </div>
+        ))}
+      </div>
 
     </div>
   );
 }
 
-/* ===== COMPONENTS ===== */
-
-const Menu=({text,icon,onClick,active})=>(
-  <div
-    onClick={onClick}
-    style={{
-      padding:"12px",
-      cursor:"pointer",
-      borderRadius:"8px",
-      background:active?"rgba(255,255,255,.15)":"transparent"
-    }}
-  >
-    {icon} {text}
-  </div>
-);
-
-const Stat=({title,value})=>(
-  <div style={statCard}>
-    <h4>{title}</h4>
-    <h1>{value}</h1>
-  </div>
-);
-
 /* ===== STYLES ===== */
 
-const page={display:"flex",minHeight:"100vh",background:"#eef2ff"};
-const sidebar={width:"240px",background:"#020617",color:"white",padding:"30px"};
-const main={flex:1,padding:"40px"};
+const page={
+  maxWidth:"1200px",
+  margin:"40px auto",
+  padding:"20px"
+};
 
-const statsGrid={display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"20px"};
-const statCard={background:"white",padding:"25px",borderRadius:"12px"};
+const formCard={
+  background:"white",
+  padding:"25px",
+  borderRadius:"14px",
+  marginBottom:"40px",
+  boxShadow:"0 8px 25px rgba(0,0,0,0.08)"
+};
 
-const addCard={background:"white",padding:"20px",margin:"20px 0"};
-const grid={display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:"20px"};
+const grid={
+  display:"grid",
+  gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",
+  gap:"12px",
+  marginBottom:"15px"
+};
 
-const card={background:"white",padding:"15px",borderRadius:"12px"};
-const img={width:"100%",height:"160px",objectFit:"cover"};
+const input={
+  padding:"10px",
+  borderRadius:"6px",
+  border:"1px solid #ddd"
+};
+
+const textarea={
+  width:"100%",
+  padding:"10px",
+  borderRadius:"6px",
+  border:"1px solid #ddd",
+  marginBottom:"12px"
+};
+
+const submitBtn={
+  background:"#2563eb",
+  color:"white",
+  border:"none",
+  padding:"12px",
+  borderRadius:"8px",
+  cursor:"pointer",
+  width:"100%",
+  fontWeight:"bold"
+};
+
+const card={
+  background:"white",
+  padding:"15px",
+  borderRadius:"12px",
+  boxShadow:"0 5px 18px rgba(0,0,0,0.08)"
+};
+
+const img={
+  width:"100%",
+  height:"170px",
+  objectFit:"cover",
+  borderRadius:"10px"
+};
 
 const btnRow={display:"flex",gap:"8px",marginTop:"10px"};
 
-const primaryBtn={background:"#4f46e5",color:"white",border:"none",padding:"8px"};
-const deleteBtn={background:"#ef4444",color:"white",border:"none",padding:"8px"};
-const darkBtn={background:"#111827",color:"white",border:"none",padding:"8px"};
-
-const modalBg={position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",justifyContent:"center",alignItems:"center"};
-const modal={background:"white",padding:"25px",borderRadius:"12px"};
+const editBtn={background:"#2563eb",color:"white",border:"none",padding:"8px",borderRadius:"6px"};
+const deleteBtn={background:"#ef4444",color:"white",border:"none",padding:"8px",borderRadius:"6px"};
+const toggleBtn={background:"#111827",color:"white",border:"none",padding:"8px",borderRadius:"6px"};
 
 export default Admin;
