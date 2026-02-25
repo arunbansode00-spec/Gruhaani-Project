@@ -30,3 +30,14 @@ app.use("/api/auth", authRoutes);
 
 const enquiryRoutes = require("./routes/enquiryRoutes");
 app.use("/api/enquiries", enquiryRoutes);
+
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "https://your-vercel-app.vercel.app"
+  ],
+  credentials: true
+}));
+app.get("/", (req, res) => {
+  res.send("Gruhaani Backend Running ✅");
+});
